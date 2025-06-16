@@ -1,4 +1,17 @@
 import SwiftUI
+import Charts
+
+struct MonthlyFuel: Identifiable {
+    let id = UUID()
+    let month: String
+    let total: Double
+}
+
+struct MileagePoint: Identifiable {
+    let id = UUID()
+    let date: Date
+    let cumulativeMileage: Double
+}
 
 struct StatsView: View {
     @Environment(\.managedObjectContext) private var viewContext
@@ -43,9 +56,75 @@ struct StatsView: View {
         return nil
     }
     
+    // Wykresy - dane miesięczne
+    var monthlyData: [MonthlyFuel] {
+        let grouped = Dictionary(grouping: fuelEntries) { entry in
+            let date = entry.date ?? Date()
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM"
+            return formatter.string(from: date)
+        }
+        return grouped.map { (month, entries) in
+            MonthlyFuel(month: month, total: entries.reduce(0) { $0 + ( $1.amount ) })
+        }
+        .sorted { $0.month < $1.month }
+    }
+    
+    // Wykresy - dane przebiegu
+    var mileageData: [MileagePoint] {
+        let sorted = fuelEntries.sorted { ($0.date ?? Date()) < ($1.date ?? Date()) }
+        var cumulative: Double = 0
+        return sorted.compactMap { entry in
+            guard let date = entry.date else { return nil }
+            cumulative += entry.mileage
+            return MileagePoint(date: date, cumulativeMileage: cumulative)
+        }
+    }
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
+                Spacer().frame(height: 16)
+                Text("Statystyki")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .padding(.top, 8)
+                
+                // WYKRESY NAD STATYSTYKAMI
+                if #available(iOS 16.0, *) {
+                    Chart {
+                        ForEach(monthlyData) { item in
+                            BarMark(
+                                x: .value("Miesiąc", item.month),
+                                y: .value("Zużycie (l)", item.total)
+                            )
+                        }
+                    }
+                    .frame(height: 200)
+                    .padding(.horizontal)
+                    
+                    Chart {
+                        ForEach(mileageData) { point in
+                            LineMark(
+                                x: .value("data", point.date),
+                                y: .value("km", point.cumulativeMileage)
+                            )
+                            .foregroundStyle(.blue)
+                            PointMark(
+                                x: .value("data", point.date),
+                                y: .value("km", point.cumulativeMileage)
+                            )
+                        }
+                    }
+                    .chartYAxisLabel("km")
+                    .chartXAxisLabel("data")
+                    .frame(height: 200)
+                    .padding(.horizontal)
+                } else {
+                    Text("Wykresy dostępne tylko na iOS 16+")
+                }
+                
+                Spacer().frame(height: 16)
                 Text("Statystyki zużycia paliwa")
                     .font(.title)
                     .padding(.top)
@@ -77,18 +156,7 @@ struct StatsView: View {
                 
                 Spacer()
 
-                // Ikona – może być dodatkowym elementem wizualnym (tutaj pozostawiamy ją jako ozdobnik)
-                Image(systemName: "chart.bar.fill")
-                    .resizable()
-                    .frame(width: 150, height: 150)
-                    .foregroundColor(.green)
-                    .padding(.bottom)
-                    .onTapGesture {
-                        // Można rozszerzyć akcję na przykład o pokazywanie szczegółowego wykresu
-                        print("Statystyki tapped")
-                    }
             }
-            .navigationTitle("Statystyki")
             .background(
                 LinearGradient(gradient: Gradient(colors: [Color("AccentColor").opacity(0.3), Color.white]),
                                startPoint: .topLeading,
